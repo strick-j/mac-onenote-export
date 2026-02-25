@@ -145,18 +145,61 @@ Image formats detected automatically: PNG, JPEG, GIF, BMP, WEBP.
 
 Errors are printed to stderr. Use `-v` or `--debug` for additional detail.
 
-## Development
+## Testing
+
+The project includes a test suite covering utilities, data models, Markdown rendering, content extraction, and CLI logic.
+
+### Setup
 
 ```bash
-# Install with dev dependencies
+# Install with dev dependencies (pytest + pytest-cov)
 pip install -e ".[dev]"
+```
 
-# Run tests
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run tests with verbose output
 pytest -v
 
-# Run tests with coverage
+# Run tests with coverage report
 pytest --cov=onenote_export
+
+# Run a specific test file
+pytest tests/test_utils.py
+
+# Run a specific test class or method
+pytest tests/test_markdown_converter.py::TestMarkdownConverterRenderPage::test_page_with_bold_text
 ```
+
+### Test Structure
+
+```
+tests/
+├── Example-NoteBook-1/           # Sample .one files for testing
+│   ├── Example-Section-1 (On 2-25-26 - 2).one
+│   ├── Example-Section-1 (On 2-25-26 - 3).one
+│   ├── Example-Section-2 (On 2-25-26 - 3).one
+│   └── Example-Section-2 (On 2-25-26).one
+├── test_cli.py                   # CLI argument parsing and section deduplication
+├── test_content_extractor.py     # Text decoding, image format detection, type parsing
+├── test_markdown_converter.py    # Markdown rendering, file/image/attachment writing
+├── test_models.py                # Data model construction and immutability
+└── test_utils.py                 # File discovery and name extraction
+```
+
+### What's Tested
+
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| `utils.py` | File discovery, section name parsing, notebook name extraction | File glob, `.onetoc2` exclusion, date suffix stripping |
+| `model/` | All dataclass defaults, immutability (`TextRun` is frozen), element construction | All content types: `RichText`, `ImageElement`, `TableElement`, `EmbeddedFile` |
+| `converter/markdown.py` | Rendering for every content type, file writing, filename sanitization | Bold, italic, strikethrough, links, super/subscript, tables, images, attachments |
+| `parser/content_extractor.py` | Text decoding (hex, UTF-16, ASCII), garbled text detection, image format magic bytes | All image formats (PNG, JPEG, GIF, BMP, WEBP), edge cases |
+| `cli.py` | Section deduplication with date parsing, 2-digit year normalization | Dated vs undated files, multiple versions, empty input |
 
 ## How It Works
 
