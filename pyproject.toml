@@ -16,5 +16,8 @@ dev = ["pytest>=7.0", "pytest-cov"]
 [project.scripts]
 onenote-export = "onenote_export.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["onenote_export*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
