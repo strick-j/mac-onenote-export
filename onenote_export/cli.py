@@ -173,7 +173,7 @@ def _deduplicate_sections(files: list[Path]) -> list[Path]:
 
     Groups by section name and keeps the file with the latest date.
     """
-    date_pattern = re.compile(r"\(On\s+(\d+)-(\d+)-(\d+)\)")
+    date_pattern = re.compile(r"\(On\s+(\d+)-(\d+)-(\d+)(?:\s*-\s*\d+)?\)")
 
     section_versions: dict[str, list[tuple[Path, tuple[int, int, int]]]] = {}
 

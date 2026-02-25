@@ -125,124 +125,133 @@ class OneStoreParser:
     def _build_pages(
         self, objects: list[ExtractedObject]
     ) -> list[ExtractedPage]:
-        """Group objects into pages based on the document structure."""
+        """Group objects into pages based on the document structure.
+
+        OneNote stores multiple revisions per page, each sharing a GUID.
+        Content objects (text, images, etc.) share the GUID of their
+        owning page node.  Orphan page metadata entries (from older
+        revisions) have a different GUID with no associated content.
+
+        Strategy:
+        1. Identify "content GUIDs" — GUIDs that own a jcidPageNode
+           (these are the actual page revisions with content objects).
+        2. Build one page per content GUID using its metadata + content.
+        3. If a content GUID has no metadata, fall back to matching
+           orphan metadata by title.
+        """
         pages: list[ExtractedPage] = []
 
-        # Collect page metadata, titles, and content objects
+        # Classify every object by type, indexed by GUID
+        guid_objects: dict[str, list[ExtractedObject]] = {}
         page_metas: list[ExtractedObject] = []
-        page_nodes: list[ExtractedObject] = []
-        title_nodes: list[ExtractedObject] = []
-        content_objects: list[ExtractedObject] = []
-        style_objects: dict[str, ExtractedObject] = {}
+        page_node_guids: list[str] = []
 
         for obj in objects:
+            guid = _extract_guid(obj.identity)
+            guid_objects.setdefault(guid, []).append(obj)
+
             if obj.obj_type == _PAGE_META:
                 page_metas.append(obj)
             elif obj.obj_type == _PAGE_NODE:
-                page_nodes.append(obj)
-            elif obj.obj_type == _TITLE_NODE:
-                title_nodes.append(obj)
-            elif obj.obj_type in (
-                _RICH_TEXT, _IMAGE_NODE, _TABLE_NODE,
-                _TABLE_ROW, _TABLE_CELL, _EMBEDDED_FILE,
-                _OUTLINE_ELEMENT, _OUTLINE_NODE, _NUMBER_LIST,
-            ):
-                content_objects.append(obj)
-            elif obj.obj_type == _STYLE_CONTAINER:
-                style_objects[obj.identity] = obj
+                if guid not in page_node_guids:
+                    page_node_guids.append(guid)
 
-        # Use page metadata to identify distinct pages
-        # Each page_meta has CachedTitleString and PageLevel
+        # No page metadata at all — single unnamed page
         if not page_metas:
-            # No page metadata - put all content in a single page
-            if content_objects:
-                page = ExtractedPage(objects=content_objects)
-                pages.append(page)
+            all_content = [
+                o for o in objects
+                if o.obj_type in (
+                    _RICH_TEXT, _IMAGE_NODE, _TABLE_NODE,
+                    _TABLE_ROW, _TABLE_CELL, _EMBEDDED_FILE,
+                    _OUTLINE_ELEMENT, _OUTLINE_NODE, _NUMBER_LIST,
+                )
+            ]
+            if all_content:
+                pages.append(ExtractedPage(objects=all_content))
             return pages
 
-        # Group content by the revision that corresponds to each page
-        # In the flat object list, objects belonging to a page share
-        # the same GUID prefix in their identity
-        page_guid_prefixes: list[str] = []
+        # Build a lookup: GUID -> page metadata
+        meta_by_guid: dict[str, ExtractedObject] = {}
         for meta in page_metas:
-            # Identity format: <ExtendedGUID> (guid, n)
             guid = _extract_guid(meta.identity)
-            if guid and guid not in page_guid_prefixes:
-                page_guid_prefixes.append(guid)
+            # Later entries (newer revisions) overwrite earlier ones
+            meta_by_guid[guid] = meta
 
-        # Get the GUID prefix from the latest page node
-        # (we want the most recent revision)
-        latest_page_guid = ""
-        if page_nodes:
-            latest_page_guid = _extract_guid(page_nodes[-1].identity)
+        # Orphan metas: metadata GUIDs with no page node (old revisions)
+        orphan_metas: dict[str, ExtractedObject] = {
+            g: m for g, m in meta_by_guid.items()
+            if g not in page_node_guids
+        }
 
-        # If there's only one unique page GUID, group everything together
-        unique_guids = set(page_guid_prefixes)
-        if latest_page_guid:
-            unique_guids.add(latest_page_guid)
+        # Content types we care about
+        _CONTENT_TYPES = {
+            _RICH_TEXT, _IMAGE_NODE, _TABLE_NODE,
+            _TABLE_ROW, _TABLE_CELL, _EMBEDDED_FILE,
+            _OUTLINE_ELEMENT, _OUTLINE_NODE, _NUMBER_LIST,
+        }
 
-        # Build pages - use the last page_meta for each unique GUID
-        seen_guids: set[str] = set()
-        for meta in reversed(page_metas):
-            guid = _extract_guid(meta.identity)
-            if not guid or guid in seen_guids:
-                continue
-            seen_guids.add(guid)
+        # Build one page per content GUID (GUID that has a PageNode)
+        seen_titles: dict[str, int] = {}
+        for content_guid in page_node_guids:
+            objs = guid_objects.get(content_guid, [])
 
-            title = _clean_text(str(meta.properties.get("CachedTitleString", "")))
-            level_raw = meta.properties.get("PageLevel", 0)
-            level = _parse_int(level_raw)
-            creation = str(meta.properties.get("TopologyCreationTimeStamp", ""))
+            # Find metadata — prefer same GUID, fall back to orphan
+            meta = meta_by_guid.get(content_guid)
+            if not meta:
+                # Match orphan metadata by scanning (first available)
+                for og, om in list(orphan_metas.items()):
+                    meta = om
+                    del orphan_metas[og]
+                    break
+
+            title = ""
+            level = 0
+            creation = ""
+            if meta:
+                title = _clean_text(
+                    str(meta.properties.get("CachedTitleString", ""))
+                )
+                level = _parse_int(meta.properties.get("PageLevel", 0))
+                creation = str(
+                    meta.properties.get("TopologyCreationTimeStamp", "")
+                )
+
+            # Extract author from the page node
+            author = ""
+            last_modified = ""
+            for o in objs:
+                if o.obj_type == _PAGE_NODE:
+                    author = _clean_text(
+                        str(o.properties.get("Author", ""))
+                    )
+                    last_modified = str(
+                        o.properties.get("LastModifiedTime", "")
+                    )
+                    break
+
+            # Collect content objects for this GUID only
+            content = [o for o in objs if o.obj_type in _CONTENT_TYPES]
 
             page = ExtractedPage(
-                title=title,
+                title=title or "Untitled",
                 level=level,
+                author=author,
                 creation_time=creation,
+                last_modified=last_modified,
+                objects=content,
             )
 
-            # Collect content objects that belong to this page's GUID
-            for obj in content_objects:
-                obj_guid = _extract_guid(obj.identity)
-                if obj_guid == guid or obj_guid == latest_page_guid:
-                    page.objects.append(obj)
-
-            # Get author from page node
-            for pn in page_nodes:
-                pn_guid = _extract_guid(pn.identity)
-                if pn_guid == guid or pn_guid == latest_page_guid:
-                    page.author = _clean_text(
-                        str(pn.properties.get("Author", ""))
-                    )
-                    page.last_modified = str(
-                        pn.properties.get("LastModifiedTime", "")
-                    )
-
-            pages.append(page)
-
-        # Reverse so pages are in order
-        pages.reverse()
-
-        # If no content was assigned to any page (GUID mismatch),
-        # put all content in the first page
-        if pages and all(len(p.objects) == 0 for p in pages):
-            pages[0].objects = content_objects
-
-        # Deduplicate pages by title - keep the version with the most content
-        # Multiple revisions of the same page produce duplicates
-        deduped: list[ExtractedPage] = []
-        seen_titles: dict[str, int] = {}
-        for page in pages:
-            key = page.title.lower().strip()
+            # Deduplicate by title — keep the version with more content
+            key = title.lower().strip()
             if key in seen_titles:
                 idx = seen_titles[key]
-                # Keep the version with more content
-                if len(page.objects) > len(deduped[idx].objects):
-                    deduped[idx] = page
+                if len(content) > len(pages[idx].objects):
+                    pages[idx] = page
             else:
-                seen_titles[key] = len(deduped)
-                deduped.append(page)
+                seen_titles[key] = len(pages)
+                pages.append(page)
 
-        return deduped
+        return pages
 
 
 def _extract_guid(identity_str: str) -> str:

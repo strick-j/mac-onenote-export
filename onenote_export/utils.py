@@ -26,8 +26,8 @@ def section_name_from_filename(filename: str) -> str:
     """
     name = Path(filename).stem
 
-    # Strip ' (On M-D-YY)' suffix
-    name = re.sub(r"\s*\(On\s+\d+-\d+-\d+\)", "", name)
+    # Strip ' (On M-D-YY)' or ' (On M-D-YY - N)' suffix
+    name = re.sub(r"\s*\(On\s+\d+-\d+-\d+(?:\s*-\s*\d+)?\)", "", name)
 
     # Strip trailing '.one' that appears in 'Name.one (On date)' pattern
     name = re.sub(r"\.one$", "", name, flags=re.IGNORECASE)

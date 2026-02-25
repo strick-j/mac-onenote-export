@@ -394,7 +394,7 @@ def _looks_garbled(text: str) -> bool:
 def _section_name_from_path(file_path: str) -> str:
     """Extract a clean section name from a file path."""
     name = Path(file_path).stem
-    name = re.sub(r"\s*\(On\s+\d+-\d+-\d+\)", "", name)
+    name = re.sub(r"\s*\(On\s+\d+-\d+-\d+(?:\s*-\s*\d+)?\)", "", name)
     name = re.sub(r"\.one$", "", name, flags=re.IGNORECASE)
     return name.strip() or "Untitled"
 
