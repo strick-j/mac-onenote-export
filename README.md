@@ -1,5 +1,10 @@
 # mac-onenote-export
 
+[![GitHub Release](https://img.shields.io/github/v/release/strick-j/mac-onenote-export)](https://github.com/strick-j/mac-onenote-export/releases)
+[![Tests](https://github.com/strick-j/mac-onenote-export/actions/workflows/test.yml/badge.svg)](https://github.com/strick-j/mac-onenote-export/actions/workflows/test.yml)
+[![Security](https://github.com/strick-j/mac-onenote-export/actions/workflows/security.yml/badge.svg)](https://github.com/strick-j/mac-onenote-export/actions/workflows/security.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
+
 A command-line tool that exports Microsoft OneNote `.one` files to Markdown on macOS.
 
 OneNote stores notebooks in a proprietary binary format (MS-ONESTORE). This tool parses those files and converts pages — including text formatting, images, tables, and attachments — into clean, version-control-friendly Markdown.
