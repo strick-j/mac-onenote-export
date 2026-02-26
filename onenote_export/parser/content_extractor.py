@@ -576,11 +576,12 @@ def _extract_image(
     if isinstance(pic_container, bytes):
         data = pic_container
     elif isinstance(pic_container, list) and file_data:
-        # Reference to file data store
-        for key, content in file_data.items():
-            fmt = _detect_image_format(content)
-            if fmt:
-                data = content
+        # PictureContainer is a list of identity strings referencing
+        # the file data store.  Look up by identity first.
+        for ref in pic_container:
+            ref_str = str(ref)
+            if ref_str in file_data:
+                data = file_data[ref_str]
                 break
 
     if not data and not filename:

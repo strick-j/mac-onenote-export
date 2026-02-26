@@ -208,12 +208,17 @@ class OneStoreParser:
         # Get all properties (objects with their property sets)
         raw_props = doc.get_properties()
 
-        # Get embedded files
+        # Get embedded files — store by both GUID and identity string
+        # so that PictureContainer references (which use identity) can
+        # resolve to the correct file data.
         raw_files = doc.get_files()
         for guid, finfo in raw_files.items():
             content = finfo.get("content", b"")
             if content:
                 section.file_data[guid] = content
+                identity = finfo.get("identity", "")
+                if identity:
+                    section.file_data[identity] = content
 
         # Extract paragraph styles from ReadOnly object declarations
         section.paragraph_styles = self._extract_paragraph_styles(doc)
