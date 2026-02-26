@@ -26,13 +26,15 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: pip install ".[dev]"
+        run: |
+          pip install ".[dev]"
+          pip freeze --exclude mac-onenote-export > requirements-audit.txt
 
       - name: Install pip-audit
         run: pip install pip-audit
 
       - name: Run pip-audit
-        run: pip-audit --strict --desc
+        run: pip-audit --strict --desc -r requirements-audit.txt
 
   code-security:
     name: Code security analysis
