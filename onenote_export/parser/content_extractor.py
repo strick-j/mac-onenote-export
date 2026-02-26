@@ -793,9 +793,9 @@ def _decode_text_value(value: object, encoding: str = "unicode") -> str:
             try:
                 raw = bytes.fromhex(cleaned)
                 if encoding == "ascii":
-                    return raw.decode("ascii", errors="replace").rstrip("\x00")
+                    return _clean_text(raw.decode("ascii", errors="replace").rstrip("\x00"))
                 else:
-                    return raw.decode("utf-16-le", errors="replace").rstrip("\x00")
+                    return _clean_text(raw.decode("utf-16-le", errors="replace").rstrip("\x00"))
             except (ValueError, UnicodeDecodeError):
                 pass
 
@@ -804,7 +804,7 @@ def _decode_text_value(value: object, encoding: str = "unicode") -> str:
         if encoding == "ascii" and _looks_garbled(cleaned):
             try:
                 raw = cleaned.encode("utf-16-le")
-                return raw.decode("ascii", errors="replace").rstrip("\x00")
+                return _clean_text(raw.decode("ascii", errors="replace").rstrip("\x00"))
             except (UnicodeEncodeError, UnicodeDecodeError):
                 pass
 
@@ -812,13 +812,13 @@ def _decode_text_value(value: object, encoding: str = "unicode") -> str:
 
     if isinstance(value, bytes):
         if encoding == "ascii":
-            return value.decode("ascii", errors="replace").rstrip("\x00")
+            return _clean_text(value.decode("ascii", errors="replace").rstrip("\x00"))
         try:
-            return value.decode("utf-16-le").rstrip("\x00")
+            return _clean_text(value.decode("utf-16-le").rstrip("\x00"))
         except UnicodeDecodeError:
-            return value.decode("latin-1").rstrip("\x00")
+            return _clean_text(value.decode("latin-1").rstrip("\x00"))
 
-    return str(value) if value else ""
+    return _clean_text(str(value)) if value else ""
 
 
 def _looks_garbled(text: str) -> bool:
@@ -845,8 +845,14 @@ def _section_name_from_path(file_path: str) -> str:
 
 
 def _clean_text(text: str) -> str:
-    """Clean text by removing null bytes and extra whitespace."""
-    return text.replace("\x00", "").strip()
+    """Clean text by removing null bytes, control characters, and replacement chars."""
+    # Remove null bytes and vertical tabs (common OneNote artifacts)
+    text = text.replace("\x00", "").replace("\x0b", "")
+    # Replace narrow no-break space (U+202F) with regular space
+    text = text.replace("\u202f", " ")
+    # Remove Unicode replacement character (U+FFFD)
+    text = text.replace("\ufffd", "")
+    return text.strip()
 
 
 def _as_bool(value: object) -> bool:
