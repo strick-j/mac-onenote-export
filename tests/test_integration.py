@@ -33,6 +33,10 @@ NOTEBOOK_DIR = TEST_DATA / "Example-NoteBook-1"
 # The file with the table is the latest version of Section 2
 TABLE_FILE = NOTEBOOK_DIR / "Example-Section-2 (On 2-25-26).one"
 
+_HAS_TEST_DATA = NOTEBOOK_DIR.exists() and any(NOTEBOOK_DIR.glob("*.one"))
+
+pytestmark = pytest.mark.skipif(not _HAS_TEST_DATA, reason="test_data not available")
+
 
 def _find_latest_section2():
     """Find the latest version of Example-Section-2."""

@@ -12,6 +12,8 @@ from onenote_export.cli import main, _deduplicate_sections
 TEST_DATA = Path(__file__).parent / "test_data"
 NOTEBOOK_DIR = TEST_DATA / "Example-NoteBook-1"
 
+_HAS_TEST_DATA = NOTEBOOK_DIR.exists() and any(NOTEBOOK_DIR.glob("*.one"))
+
 
 class TestDeduplicateSections:
     """Tests for _deduplicate_sections."""
@@ -73,6 +75,7 @@ class TestDeduplicateSections:
         assert result[0] == new
 
 
+@pytest.mark.skipif(not _HAS_TEST_DATA, reason="test_data not available")
 class TestMainHappyPath:
     """Tests for main() with real test data."""
 
@@ -128,6 +131,7 @@ class TestMainErrorHandling:
         # Should return 2 (errors with no files written) or continue
         assert result in (0, 2)
 
+    @pytest.mark.skipif(not _HAS_TEST_DATA, reason="test_data not available")
     def test_converter_error_handled(self, tmp_path):
         """Converter errors are collected but don't crash."""
         with patch(
@@ -145,6 +149,7 @@ class TestMainErrorHandling:
             assert result in (0, 2)
 
 
+@pytest.mark.skipif(not _HAS_TEST_DATA, reason="test_data not available")
 class TestMainLogging:
     """Tests for main() logging configuration."""
 
