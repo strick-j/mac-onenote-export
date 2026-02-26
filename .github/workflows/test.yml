@@ -38,7 +38,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests with coverage
-        run: pytest --cov=onenote_export --cov-report=term-missing --cov-report=xml --cov-fail-under=74
+        run: pytest --cov=onenote_export --cov-report=term-missing --cov-report=xml --cov-fail-under=85
 
       - name: Upload coverage report
         if: matrix.os == 'macos-latest' && matrix.python-version == '3.13'
