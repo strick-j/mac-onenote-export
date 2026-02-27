@@ -40,6 +40,9 @@ _OUTLINE_NODE = "jcidOutlineNode"
 _NUMBER_LIST = "jcidNumberListNode"
 _STYLE_CONTAINER = "jcidPersistablePropertyContainerForTOCSection"
 
+# Structural types that delimit content groups in the flat object list.
+_STRUCTURAL_TYPES = frozenset({_OUTLINE_ELEMENT, _OUTLINE_NODE})
+
 # ParagraphStyleId → heading level mapping
 _HEADING_STYLE_MAP: dict[str, int] = {
     "h1": 1,
@@ -164,6 +167,16 @@ def _reorder_by_outline_hierarchy(
 
     When no orphaned content objects are detected (content before the first
     structural element), the list is returned unchanged.
+
+    Orphan matching heuristic
+    -------------------------
+    The OneNote format does not provide a direct structural link from an
+    orphaned content object back to its parent OE.  We use a positional
+    heuristic: orphaned content is assigned — in order — to *contentless
+    leaf* OEs (OEs with no inline content AND no child OEs).  This
+    prevents purely structural wrapper OEs from stealing orphans.  The
+    heuristic is correct for all observed OneNote files but is inherently
+    best-effort.
     """
     if len(objects) < 4:
         return objects
@@ -172,15 +185,15 @@ def _reorder_by_outline_hierarchy(
     if not has_outline:
         return objects
 
-    _BOUNDARY = {_OUTLINE_ELEMENT, _OUTLINE_NODE}
-
     # Collect orphaned content: content objects before the first structural element.
-    orphans: list[ExtractedObject] = []
+    orphans: tuple[ExtractedObject, ...] = ()
+    pre: list[ExtractedObject] = []
     for obj in objects:
-        if obj.obj_type in _BOUNDARY:
+        if obj.obj_type in _STRUCTURAL_TYPES:
             break
         if obj.obj_type in (_RICH_TEXT, _IMAGE_NODE, _EMBEDDED_FILE):
-            orphans.append(obj)
+            pre.append(obj)
+    orphans = tuple(pre)
 
     # If no orphaned content, objects are already in usable order.
     if not orphans:
@@ -201,14 +214,27 @@ def _reorder_by_outline_hierarchy(
         j = i + 1
         while j < len(objects):
             nxt = objects[j]
-            if nxt.obj_type in _BOUNDARY:
+            if nxt.obj_type in _STRUCTURAL_TYPES:
                 break
             group.append(nxt)
             j += 1
         oe_content[obj.identity] = group
 
+    # Identify leaf OEs: OEs that have no child OEs themselves.
+    # Only leaf OEs are eligible for orphan matching; wrapper OEs
+    # (those with ElementChildNodesOfVersionHistory) are structural
+    # and should not receive orphaned content.
+    oes_with_children: set[str] = set()
+    for obj in objects:
+        if obj.obj_type != _OUTLINE_ELEMENT:
+            continue
+        refs = obj.properties.get("ElementChildNodesOfVersionHistory", [])
+        if refs:
+            oes_with_children.add(obj.identity)
+
     visited: set[str] = set()
     result: list[ExtractedObject] = []
+    orphan_idx = 0  # index into the immutable orphans tuple
 
     def _emit(obj: ExtractedObject) -> None:
         ident = obj.identity
@@ -219,6 +245,7 @@ def _reorder_by_outline_hierarchy(
         result.append(obj)
 
     def _walk_oe(oe_id: str) -> None:
+        nonlocal orphan_idx
         if oe_id in visited:
             return
         oe_obj = id_to_obj.get(oe_id)
@@ -231,8 +258,13 @@ def _reorder_by_outline_hierarchy(
         if group:
             for g in group:
                 _emit(g)
-        elif orphans:
-            _emit(orphans.pop(0))
+        elif (
+            orphan_idx < len(orphans)
+            and oe_id not in oes_with_children
+        ):
+            # Contentless leaf OE — assign next orphan.
+            _emit(orphans[orphan_idx])
+            orphan_idx += 1
 
         child_refs = oe_obj.properties.get(
             "ElementChildNodesOfVersionHistory", []
